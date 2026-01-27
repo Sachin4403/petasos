@@ -1,0 +1,423 @@
+package servicecfg
+
+import (
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/sd"
+	"github.com/hashicorp/consul/api"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/xmidt-org/webpa-common/v2/logging"
+	"github.com/xmidt-org/webpa-common/v2/service"
+	"github.com/xmidt-org/webpa-common/v2/service/consul"
+	"github.com/xmidt-org/webpa-common/v2/service/k8s"
+	"github.com/xmidt-org/webpa-common/v2/service/zk"
+	"github.com/xmidt-org/webpa-common/v2/xviper"
+)
+
+func testNewEnvironmentEmpty(t *testing.T) {
+	var (
+		assert = assert.New(t)
+		v      = viper.New()
+	)
+
+	e, err := NewEnvironment(nil, v)
+	assert.Nil(e)
+	assert.Error(err)
+}
+
+func testNewEnvironmentUnmarshalError(t *testing.T) {
+	var (
+		assert        = assert.New(t)
+		expectedError = errors.New("expected unmarshal error")
+		u             = xviper.InvalidUnmarshaler{expectedError}
+	)
+
+	e, actualError := NewEnvironment(nil, u)
+	assert.Nil(e)
+	assert.Equal(expectedError, actualError)
+}
+
+func testNewEnvironmentFixed(t *testing.T) {
+	var (
+		assert  = assert.New(t)
+		require = require.New(t)
+
+		logger = logging.NewTestLogger(nil, t)
+		v      = viper.New()
+
+		configuration = strings.NewReader(`
+			{
+				"fixed": ["instance1.com:1234", "instance2.net:8888"]
+			}
+		`)
+	)
+
+	v.SetConfigType("json")
+	require.NoError(v.ReadConfig(configuration))
+
+	e, err := NewEnvironment(logger, v)
+	require.NoError(err)
+	require.NotNil(e)
+
+	i := e.Instancers()
+	assert.Len(i, 1)
+	assert.NotNil(i["fixed"])
+
+	assert.NoError(e.Close())
+}
+
+func testNewEnvironmentZookeeper(t *testing.T) {
+	defer resetEnvironmentFactories()
+
+	var (
+		assert  = assert.New(t)
+		require = require.New(t)
+
+		logger = logging.NewTestLogger(nil, t)
+		v      = viper.New()
+
+		expectedEnvironment = service.NewEnvironment()
+
+		configuration = strings.NewReader(`
+			{
+				"zookeeper": {
+					"client": {
+						"connection": "host1.com:1111,host2.com:2222",
+						"connectTimeout": "10s",
+						"sessionTimeout": "20s"
+					},
+					"watches": ["/some/where"]
+				}
+			}
+		`)
+	)
+
+	v.SetConfigType("json")
+	require.NoError(v.ReadConfig(configuration))
+
+	zookeeperEnvironmentFactory = func(l log.Logger, zo zk.Options, eo ...service.Option) (service.Environment, error) {
+		assert.Equal(logger, l)
+		assert.Equal(
+			zk.Options{
+				Client: zk.Client{
+					Connection:     "host1.com:1111,host2.com:2222",
+					ConnectTimeout: 10 * time.Second,
+					SessionTimeout: 20 * time.Second,
+				},
+				Watches: []string{"/some/where"},
+			},
+			zo,
+		)
+
+		return expectedEnvironment, nil
+	}
+
+	actualEnvironment, err := NewEnvironment(logger, v)
+	require.NoError(err)
+	require.NotNil(actualEnvironment)
+	assert.Equal(expectedEnvironment, actualEnvironment)
+
+	assert.NoError(actualEnvironment.Close())
+}
+
+func testNewEnvironmentConsul(t *testing.T) {
+	defer resetEnvironmentFactories()
+
+	var (
+		assert  = assert.New(t)
+		require = require.New(t)
+
+		logger = logging.NewTestLogger(nil, t)
+		v      = viper.New()
+
+		expectedEnvironment = service.NewEnvironment()
+
+		configuration = strings.NewReader(`
+			{
+				"consul": {
+					"client": {
+						"address": "localhost:8500",
+						"scheme": "https"
+					},
+					"registrations": [
+						{
+							"name": "test",
+							"tags": ["tag1", "tag2"],
+							"address": "foobar.com",
+							"port": 2121
+						},
+						{
+							"name": "test2",
+							"address": "foobar.com",
+							"port": 3131
+						}
+					],
+					"watches": [
+						{
+							"service": "test",
+							"tags": ["tag1"],
+							"passingOnly": true
+						},
+						{
+							"service": "test2",
+							"passingOnly": false
+						}
+					]
+				}
+			}
+		`)
+	)
+
+	v.SetConfigType("json")
+	require.NoError(v.ReadConfig(configuration))
+
+	consulEnvironmentFactory = func(l log.Logger, registrationScheme string, co consul.Options, eo ...service.Option) (service.Environment, error) {
+		assert.Equal(logger, l)
+		assert.Equal(
+			consul.Options{
+				Client: &api.Config{
+					Address: "localhost:8500",
+					Scheme:  "https",
+				},
+				Registrations: []api.AgentServiceRegistration{
+					api.AgentServiceRegistration{
+						Name:    "test",
+						Tags:    []string{"tag1", "tag2"},
+						Address: "foobar.com",
+						Port:    2121,
+					},
+					api.AgentServiceRegistration{
+						Name:    "test2",
+						Address: "foobar.com",
+						Port:    3131,
+					},
+				},
+				Watches: []consul.Watch{
+					consul.Watch{
+						Service:     "test",
+						Tags:        []string{"tag1"},
+						PassingOnly: true,
+					},
+					consul.Watch{
+						Service:     "test2",
+						PassingOnly: false,
+					},
+				},
+			},
+			co,
+		)
+
+		return expectedEnvironment, nil
+	}
+
+	actualEnvironment, err := NewEnvironment(logger, v)
+	require.NoError(err)
+	require.NotNil(actualEnvironment)
+	assert.Equal(expectedEnvironment, actualEnvironment)
+
+	assert.NoError(actualEnvironment.Close())
+}
+
+func testNewEnvironmentK8s(t *testing.T) {
+	defer resetEnvironmentFactories()
+
+	var (
+		assert  = assert.New(t)
+		require = require.New(t)
+
+		logger = logging.NewTestLogger(nil, t)
+		v      = viper.New()
+
+		configuration = strings.NewReader(`
+			{
+				"k8s": {
+					"namespace": "default",
+					"labelSelector": "app=talaria",
+					"serviceName": "talaria",
+					"inCluster": true,
+					"portName": "http",
+					"scheme": "https",
+					"endpointType": "endpoints"
+				}
+			}
+		`)
+	)
+
+	v.SetConfigType("json")
+	require.NoError(v.ReadConfig(configuration))
+
+	k8sInstancerFactory = func(l log.Logger, opts *k8s.K8sOptions) (sd.Instancer, error) {
+		assert.Equal(logger, l)
+		assert.Equal(
+			&k8s.K8sOptions{
+				Namespace:    "default",
+				LabelSelector: "app=talaria",
+				ServiceName:  "talaria",
+				InCluster:    true,
+				PortName:     "http",
+				Scheme:       "https",
+				EndpointType: "endpoints",
+			},
+			opts,
+		)
+		return sd.FixedInstancer([]string{"https://example.com:1234"}), nil
+	}
+
+	actualEnvironment, err := NewEnvironment(logger, v)
+	require.NoError(err)
+	require.NotNil(actualEnvironment)
+
+	instancers := actualEnvironment.Instancers()
+	assert.Len(instancers, 1)
+	assert.NotNil(instancers["k8s"])
+
+	assert.NoError(actualEnvironment.Close())
+}
+
+func testNewEnvironmentK8sPods(t *testing.T) {
+	defer resetEnvironmentFactories()
+
+	var (
+		assert  = assert.New(t)
+		require = require.New(t)
+
+		logger = logging.NewTestLogger(nil, t)
+		v      = viper.New()
+
+		configuration = strings.NewReader(`
+			{
+				"k8s": {
+					"namespace": "device-ns",
+					"labelSelector": "app=pods-service",
+					"serviceName": "pods-service",
+					"kubeconfig": "/tmp/kubeconfig",
+					"portName": "http",
+					"scheme": "http",
+					"endpointType": "pods"
+				}
+			}
+		`)
+	)
+
+	v.SetConfigType("json")
+	require.NoError(v.ReadConfig(configuration))
+
+	k8sInstancerFactory = func(l log.Logger, opts *k8s.K8sOptions) (sd.Instancer, error) {
+		assert.Equal(logger, l)
+		assert.Equal(
+			&k8s.K8sOptions{
+				Namespace:    "device-ns",
+				LabelSelector: "app=pods-service",
+				ServiceName:  "pods-service",
+				Kubeconfig:   "/tmp/kubeconfig",
+				PortName:     "http",
+				Scheme:       "http",
+				EndpointType: "pods",
+			},
+			opts,
+		)
+		return sd.FixedInstancer([]string{"http://example.com:1234"}), nil
+	}
+
+	actualEnvironment, err := NewEnvironment(logger, v)
+	require.NoError(err)
+	require.NotNil(actualEnvironment)
+
+	instancers := actualEnvironment.Instancers()
+	require.Len(instancers, 1)
+
+	instancer, ok := instancers["k8s"]
+	require.True(ok)
+
+	ci, ok := instancer.(service.ContextualInstancer)
+	require.True(ok)
+	assert.Equal("pods-service", ci.Metadata()["service"])
+
+	k8sMeta, ok := ci.Metadata()["k8s"].(*k8s.K8sOptions)
+	require.True(ok)
+	assert.Equal(
+		&k8s.K8sOptions{
+			Namespace:    "device-ns",
+			LabelSelector: "app=pods-service",
+			ServiceName:  "pods-service",
+			Kubeconfig:   "/tmp/kubeconfig",
+			PortName:     "http",
+			Scheme:       "http",
+			EndpointType: "pods",
+		},
+		k8sMeta,
+	)
+
+	assert.NoError(actualEnvironment.Close())
+}
+
+func testNewEnvironmentK8sPodsDefaultService(t *testing.T) {
+	defer resetEnvironmentFactories()
+
+	var (
+		assert  = assert.New(t)
+		require = require.New(t)
+
+		logger = logging.NewTestLogger(nil, t)
+		v      = viper.New()
+
+		configuration = strings.NewReader(`
+			{
+				"k8s": {
+					"namespace": "default",
+					"labelSelector": "app=talaria",
+					"endpointType": "pods"
+				}
+			}
+		`)
+	)
+
+	v.SetConfigType("json")
+	require.NoError(v.ReadConfig(configuration))
+
+	k8sInstancerFactory = func(l log.Logger, opts *k8s.K8sOptions) (sd.Instancer, error) {
+		assert.Equal(logger, l)
+		assert.Equal(
+			&k8s.K8sOptions{
+				Namespace:    "default",
+				LabelSelector: "app=talaria",
+				EndpointType: "pods",
+			},
+			opts,
+		)
+		return sd.FixedInstancer([]string{"http://example.com:1234"}), nil
+	}
+
+	actualEnvironment, err := NewEnvironment(logger, v)
+	require.NoError(err)
+	require.NotNil(actualEnvironment)
+
+	instancers := actualEnvironment.Instancers()
+	require.Len(instancers, 1)
+
+	instancer, ok := instancers["k8s"]
+	require.True(ok)
+
+	ci, ok := instancer.(service.ContextualInstancer)
+	require.True(ok)
+	assert.Equal(k8s.DefaultApplicationname, ci.Metadata()["service"])
+
+	assert.NoError(actualEnvironment.Close())
+}
+
+func TestNewEnvironment(t *testing.T) {
+	t.Run("Empty", testNewEnvironmentEmpty)
+	t.Run("UnmarshalError", testNewEnvironmentUnmarshalError)
+	t.Run("Fixed", testNewEnvironmentFixed)
+	t.Run("Zookeeper", testNewEnvironmentZookeeper)
+	t.Run("Consul", testNewEnvironmentConsul)
+	t.Run("K8s", testNewEnvironmentK8s)
+	t.Run("K8sPods", testNewEnvironmentK8sPods)
+	t.Run("K8sPodsDefaultService", testNewEnvironmentK8sPodsDefaultService)
+}

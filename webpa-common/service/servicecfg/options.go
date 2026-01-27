@@ -1,0 +1,45 @@
+package servicecfg
+
+import (
+	"github.com/xmidt-org/webpa-common/v2/service"
+	"github.com/xmidt-org/webpa-common/v2/service/consul"
+	"github.com/xmidt-org/webpa-common/v2/service/k8s"
+	"github.com/xmidt-org/webpa-common/v2/service/zk"
+)
+
+// Options contains the superset of all necessary options for initializing service discovery.
+type Options struct {
+	VnodeCount    int    `json:"vnodeCount,omitempty"`
+	DisableFilter bool   `json:"disableFilter"`
+	DefaultScheme string `json:"defaultScheme"`
+
+	Fixed     []string        `json:"fixed,omitempty"`
+	Zookeeper *zk.Options     `json:"zookeeper,omitempty"`
+	Consul    *consul.Options `json:"consul,omitempty"`
+
+	K8s *k8s.K8sOptions `json:"k8s,omitempty" yaml:"k8s,omitempty"`
+}
+
+func (o *Options) vnodeCount() int {
+	if o != nil && o.VnodeCount > 0 {
+		return o.VnodeCount
+	}
+
+	return service.DefaultVnodeCount
+}
+
+func (o *Options) disableFilter() bool {
+	if o != nil {
+		return o.DisableFilter
+	}
+
+	return false
+}
+
+func (o *Options) defaultScheme() string {
+	if o != nil && len(o.DefaultScheme) > 0 {
+		return o.DefaultScheme
+	}
+
+	return service.DefaultScheme
+}

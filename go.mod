@@ -2,6 +2,8 @@ module github.com/xmidt-org/petasos
 
 go 1.19
 
+replace github.com/xmidt-org/webpa-common/v2 => ./webpa-common
+
 require (
 	github.com/go-kit/log v0.2.1
 	github.com/justinas/alice v1.2.0
@@ -27,7 +29,7 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
-	github.com/go-kit/kit v0.12.0 // indirect
+	github.com/go-kit/kit v0.13.0 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
