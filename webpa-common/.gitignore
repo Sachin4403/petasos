@@ -1,0 +1,12 @@
+*.swp
+*.out
+*.log
+vendor
+pkg
+src
+coverage*
+report.json
+.idea
+server/cpuprofile
+server/memprofile
+*.code-workspace
