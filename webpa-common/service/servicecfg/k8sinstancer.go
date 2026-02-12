@@ -153,7 +153,7 @@ func (i *instancer) extractInstances(endpoints *corev1.Endpoints) []string {
 		// Add all ready addresses
 		for _, addr := range subset.Addresses {
 			i.logger.Info("looping over the EndpointAddress", zap.Any("addr", addr))
-			instance := formatEndpointInstance(i.watch.scheme(), addr.Hostname, port)
+			instance := formatEndpointInstance(i.watch.scheme(), addr.Hostname, endpoints.Namespace, port)
 			instances = append(instances, instance)
 		}
 	}
@@ -183,8 +183,8 @@ func (i *instancer) findPort(ports []corev1.EndpointPort) int32 {
 }
 
 // formatEndpointInstance creates an instance string from endpoint data
-func formatEndpointInstance(scheme, address string, port int32) string {
-	return fmt.Sprintf("%s://%s:%d", scheme, address, port)
+func formatEndpointInstance(scheme, address, namespace string, port int32) string {
+	return fmt.Sprintf("%s://%s.%s:%d", scheme, address, port)
 }
 
 // update notifies all registered channels of a new event
