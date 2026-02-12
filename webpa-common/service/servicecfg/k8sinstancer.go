@@ -192,6 +192,11 @@ func (i *instancer) update(e sd.Event) {
 	i.registerLock.Lock()
 	defer i.registerLock.Unlock()
 
+	i.logger.Info("sending an event for update instances from K8s.",
+		zap.Int("instanceCount", len(e.Instances)),
+		zap.Strings("instances", e.Instances),
+		zap.Error(e.Err))
+
 	if reflect.DeepEqual(i.state, e) {
 		return
 	}
