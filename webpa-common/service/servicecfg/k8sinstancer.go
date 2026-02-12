@@ -152,7 +152,8 @@ func (i *instancer) extractInstances(endpoints *corev1.Endpoints) []string {
 
 		// Add all ready addresses
 		for _, addr := range subset.Addresses {
-			instance := formatEndpointInstance(i.watch.scheme(), addr.IP, port)
+			i.logger.Info("looping over the EndpointAddress", zap.Any("addr", addr))
+			instance := formatEndpointInstance(i.watch.scheme(), addr.Hostname, port)
 			instances = append(instances, instance)
 		}
 	}
