@@ -64,20 +64,16 @@ type UpdatableAccessor struct {
 // no instances.
 func (ua *UpdatableAccessor) Get(key []byte) (instance string, err error) {
 	ua.lock.RLock()
-	fmt.Println("getting the instance from UpdatableAccessor with ua.current", ua.current)
 
 	switch {
 	case ua.err != nil:
-		fmt.Println("got the error in ua.err", ua.err)
 		err = ua.err
 
 	case ua.current != nil:
 		instance, err = ua.current.Get(key)
-		fmt.Println("inside ua.current", ua.current, key, err)
 
 	default:
 		err = errNoInstances
-		fmt.Println("in default")
 
 	}
 
