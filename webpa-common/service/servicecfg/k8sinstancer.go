@@ -184,7 +184,7 @@ func (i *instancer) findPort(ports []corev1.EndpointPort) int32 {
 
 // formatEndpointInstance creates an instance string from endpoint data
 func formatEndpointInstance(scheme, address, namespace string, port int32) string {
-	return fmt.Sprintf("%s://%s.%s:%d", scheme, address, port)
+	return fmt.Sprintf("%s://%s.%s:%d", scheme, address, namespace, port)
 }
 
 // update notifies all registered channels of a new event
