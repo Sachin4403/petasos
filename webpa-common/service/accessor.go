@@ -103,7 +103,6 @@ func (ua *UpdatableAccessor) SetInstances(a Accessor) {
 
 // Update sets both the instances and the Get error in a single, atomic call.
 func (ua *UpdatableAccessor) Update(a Accessor, err error) {
-	fmt.Println("updating the UpdatableAccessor with", a, err)
 	ua.lock.Lock()
 	ua.err = err
 	ua.current = a

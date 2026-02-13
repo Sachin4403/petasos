@@ -152,7 +152,6 @@ func (i *instancer) extractInstances(endpoints *corev1.Endpoints) []string {
 
 		// Add all ready addresses
 		for _, addr := range subset.Addresses {
-			i.logger.Info("looping over the EndpointAddress", zap.Any("addr", addr))
 			instance := formatEndpointInstance(i.watch.scheme(), addr.Hostname, endpoints.Namespace, i.watch.Service, port)
 			instances = append(instances, instance)
 		}
@@ -192,12 +191,6 @@ func (i *instancer) update(e sd.Event) {
 	sort.Strings(e.Instances)
 	i.registerLock.Lock()
 	defer i.registerLock.Unlock()
-
-	i.logger.Info("sending an event for update instances from K8s.",
-		zap.Int("instanceCount", len(e.Instances)),
-		zap.Strings("instances", e.Instances),
-		zap.Error(e.Err))
-
 	if reflect.DeepEqual(i.state, e) {
 		return
 	}
